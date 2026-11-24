@@ -88,8 +88,8 @@ optional GBB pattern skills outside the pilot path (Teams publishing, AgentOps,
 SRE Agent, backup and alert baselines, PAYG/PTU break-even) remain in
 [awesome-gbb](https://github.com/aiappsgbb/awesome-gbb), labelled
 **GBB pattern, not a Microsoft product skill**; install them only when you need
-that capability. `foundry-iq` exists under the same name in both catalogs; use the
-official `foundry-iq-skills@azure-skills`. Live demos keep their recorded pins;
+that capability. For `foundry-iq` use the official `foundry-iq-skills@azure-skills`;
+awesome-gbb 6.0.0 renamed its own Foundry IQ skill, so the names no longer collide. Live demos keep their recorded pins;
 this mapping does not change them.
 
 **Install threadlight-skills first, then the official plugins.** Copilot CLI

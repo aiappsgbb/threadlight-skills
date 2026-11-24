@@ -7,6 +7,22 @@ field.
 
 ## [Unreleased]
 
+### 2.80.1: foundry-iq references after the awesome-gbb rename
+
+- **Why.** awesome-gbb 6.0.0 renamed its `foundry-iq` skill to
+  `foundry-iq-agent-integration` ([aiappsgbb/awesome-gbb#571](https://github.com/aiappsgbb/awesome-gbb/pull/571))
+  so it no longer collides with the official `foundry-iq`
+  (`foundry-iq-skills@azure-skills`). Links to
+  `awesome-gbb/tree/main/skills/foundry-iq/` would no longer resolve.
+- **References.** `threadlight-design` 1.13.1, `threadlight-deploy` 1.9.1 and
+  `threadlight-demo-data-factory` 1.0.2 See-also rows now link to the official
+  `foundry-iq` at `v1.2.113`; `threadlight-ground` 0.2.1 names it as official.
+  The bootstrap hardening checklist (module composer) and the hosted MAF KB
+  route (MAF README) exist only in awesome-gbb and now link to the catalogued
+  commit `7f1de882`. `foundry-iq` stays `official-default`; the manifest keeps
+  its `7f1de882` snapshot and its note records the rename. `Backing service:
+  foundry-iq` in SPEC § 7 is unchanged.
+
 ### 2.80.0: Copilot SDK 2.0 pilot: pre-tool-use gate, per-session journal, runtime spans to Application Insights (#205)
 
 - **Why.** Pilots did not use the SDK 2.x production features: explicit

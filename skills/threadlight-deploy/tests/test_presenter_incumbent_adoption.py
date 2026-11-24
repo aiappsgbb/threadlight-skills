@@ -17,9 +17,9 @@ GUIDE = ROOT / "skills/threadlight-deploy/references/presenter-adoption.md"
 
 def test_adoption_release_versions_and_limits():
     for skill, version in {
-        "threadlight-deploy": "1.9.0",
+        "threadlight-deploy": "1.9.1",
         "threadlight-workspace-ui": "1.1.1",
-        "threadlight-demo-data-factory": "1.0.1",
+        "threadlight-demo-data-factory": "1.0.2",
     }.items():
         text = (ROOT / "skills" / skill / "SKILL.md").read_text()
         assert yaml.safe_load(text.split("---", 2)[1])["metadata"]["version"] == version

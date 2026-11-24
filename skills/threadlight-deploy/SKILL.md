@@ -16,7 +16,7 @@ description: >-
   non-Threadlight GHCP runtime (see references/hosted-agent/ghcp); azd tenant
   isolation (use threadlight-tenant-isolation).
 metadata:
-  version: "1.9.0"
+  version: "1.9.1"
 ---
 
 # Foundry Hosted Agent Deploy
@@ -869,7 +869,7 @@ The full forensic table lives in [`references/gotchas.md`](references/gotchas.md
 |-------|----------|
 | [**threadlight-design**](../threadlight-design/) | Spec out the business process first (produces specs/ + AGENTS.md + skills that this skill consumes) |
 | [**threadlight-deploy/references/hosted-agent/maf**](references/hosted-agent/maf/README.md) | Reference for RBAC, identity model, agent.yaml schema, dependencies, troubleshooting |
-| [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default for every process** — provisions the AI Search index + Knowledge Agent (consumed in Phase 6 via `foundry-iq-index.bicep`) |
+| [**foundry-iq**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/foundry-iq-skills/skills/foundry-iq) (official, `foundry-iq-skills@azure-skills`) | **Default for every process** — provisions the AI Search index + Knowledge Agent (consumed in Phase 6 via `foundry-iq-index.bicep`) |
 | [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/azure-ai) | Vision / Document Intelligence / Speech models — consumed in Phase 6 when SPEC § 7b selects them |
 | [**foundry-teams-bot**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-teams-bot/) | Deep dive on Teams bot integration (bot.py, manifest, Bicep, sideloading) |
 | [**threadlight-mcp-aca**](../threadlight-mcp-aca/SKILL.md) | Deploy custom MCP servers as ACA or Azure Functions |

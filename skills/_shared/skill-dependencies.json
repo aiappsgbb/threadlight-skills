@@ -446,7 +446,7 @@
         }
       ],
       "threadlight_owned_gap": "Knowledge-source ACL/citation evidence stays in threadlight-ground.",
-      "note": "Official plugin is preview (0.2.x) and uses the same skill name; install only one foundry-iq."
+      "note": "Official plugin is preview (0.2.x); its skill is named foundry-iq. awesome-gbb 6.0.0 (aiappsgbb/awesome-gbb#571) renamed its own skill after the commit checked here, so the names no longer collide; Threadlight routes to the official foundry-iq."
     },
     "foundry-mcp-aca": {
       "label": "threadlight-owned",

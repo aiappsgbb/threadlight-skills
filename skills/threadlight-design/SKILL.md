@@ -16,7 +16,7 @@ description: >
   DO NOT USE FOR: running existing skills, executing code, deploying (use threadlight-deploy),
   general Q&A, internal Microsoft tooling automation, generic chatbot prototyping.
 metadata:
-  version: "1.13.0"
+  version: "1.13.1"
 ---
 
 # Threadlight Design
@@ -2444,7 +2444,7 @@ The spec is durable and runtime-agnostic. You can derive different implementatio
 | [**threadlight-local-test**](../threadlight-local-test/) | **Optional fast inner-loop for SEs.** Run the design output locally (FoundryChatClient + FastMCP + workspace) without `azd up` — Cowork-friendly for iterating on tools and prompts before a customer workshop |
 | [**threadlight-safe-check**](../threadlight-safe-check/) | Reads the `deployment_manifest{}` block authored under SPEC § 11c (this skill's responsibility) and gates design / pre-deploy / post-deploy completeness |
 | [**threadlight-deploy/references/observability**](https://github.com/aiappsgbb/threadlight-skills/blob/main/skills/threadlight-deploy/references/observability/README.md) | Always layered into deploy from day one — App Insights + OTel telemetry across hosted agents, MCP, ACA jobs, workspace; closes the silent gap where `azd up` returns 0 but AppIn stays empty |
-| [**foundry-iq**](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | **Default knowledge retrieval pattern** — every SPEC § 7 should declare a Knowledge Base with `Backing service: foundry-iq` unless the process has zero domain documents |
+| [**foundry-iq**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/foundry-iq-skills/skills/foundry-iq) (official, `foundry-iq-skills@azure-skills`) | **Default knowledge retrieval pattern** — every SPEC § 7 should declare a Knowledge Base with `Backing service: foundry-iq` unless the process has zero domain documents |
 | [**azure-ai**](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/azure-skills/skills/azure-ai) | Consumes SPEC § 7b AI Services & Model Selection — wires vision / DocIntel / Speech tools |
 | [**threadlight-workspace-ui**](../threadlight-workspace-ui/) | Consumes SPEC § 8b Workspace UX — generates the operator workspace |
 | [**threadlight-hitl-patterns**](../threadlight-hitl-patterns/) | Consumes SPEC § 8 Action Gates — generates Adaptive Cards + audit trail for the seven canonical gates |
