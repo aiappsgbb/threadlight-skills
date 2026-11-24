@@ -17,7 +17,7 @@ description: >-
   knowledge_sources gate. DO NOT USE FOR: Foundry IQ retrieval, quality
   scoring, live probes, cross-leg readiness gating.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # Threadlight Ground — prove the retrieval is safe, not just plausible
@@ -254,8 +254,8 @@ python3 -m pytest skills/threadlight-ground/tests/ -v
 
 ## See also
 
-- **`foundry-iq`** — owns Foundry IQ (Azure AI Search Knowledge Agent)
-  provisioning and the actual retrieval/query planning this leg's evidence
+- **`foundry-iq`** (official, `foundry-iq-skills@azure-skills`) — owns Foundry IQ
+  (Azure AI Search Knowledge Agent) provisioning and the actual retrieval/query planning this leg's evidence
   comes from.
 - **`threadlight-evals`** — owns answer-quality/relevance scoring; a
   separate concern from the ACL/citation/refusal proofs here.

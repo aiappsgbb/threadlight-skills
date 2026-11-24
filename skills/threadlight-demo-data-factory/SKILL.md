@@ -13,7 +13,7 @@ description: >
   that), live data ingestion (use threadlight-event-triggers), MCP
   server scaffold (use threadlight-mcp-aca).
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Threadlight Demo Data Factory
@@ -464,6 +464,6 @@ realism").
 | [`threadlight-design`](../threadlight-design/) | Produces spec § 4 + § 11d + the per-industry realism references |
 | [`threadlight-mcp-aca`](../threadlight-mcp-aca/SKILL.md) | Serves the generated JSON via FastMCP (Option D) |
 | [`threadlight-workspace-ui`](../threadlight-workspace-ui/) | Renders the same JSON in the operator workspace |
-| [`foundry-iq`](https://github.com/aiappsgbb/awesome-gbb/tree/main/skills/foundry-iq/) | If the spec also needs a Knowledge Base, that's separate — this skill is for transactional/relational data only |
+| [`foundry-iq`](https://github.com/microsoft/azure-skills/tree/v1.2.113/.github/plugins/foundry-iq-skills/skills/foundry-iq) (official, `foundry-iq-skills@azure-skills`) | If the spec also needs a Knowledge Base, that's separate — this skill is for transactional/relational data only |
 | [`threadlight-deploy`](../threadlight-deploy/) | Wires seed + reset scripts into the deploy lifecycle |
 | [`threadlight-safe-check`](../threadlight-safe-check/) | Verifies the seed JSON / database fixtures generated here are actually present after deploy (post-deploy gate) |

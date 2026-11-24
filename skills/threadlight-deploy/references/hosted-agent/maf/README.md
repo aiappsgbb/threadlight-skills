@@ -1017,7 +1017,7 @@ process repo should ship `tests/probe_mcp_output.py` for this.
 > On hosted agents the symptom is every Responses request returning
 > `server_error` with no useful log signal. **Use `httpx.AsyncClient(auth=httpx.Auth)`
 > via `http_client=` instead** (companion example below) — see
-> `foundry-iq` SKILL § "KB access from a hosted MAF agent — three
+> awesome-gbb [`foundry-iq` SKILL at `7f1de882`](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-iq/SKILL.md#kb-access-from-a-hosted-maf-agent--three-routes) § "KB access from a hosted MAF agent — three
 > routes" → Route B for the canonical pattern.
 
 For MCP servers backed by Azure services that authenticate with

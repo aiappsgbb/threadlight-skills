@@ -239,7 +239,7 @@ hooks:
       uv run publish_aca_mcp.py
 ```
 
-> **`bootstrap_foundry_iq.py` MUST follow `foundry-iq/SKILL.md` § Bootstrap script: hardening checklist.**
+> **`bootstrap_foundry_iq.py` MUST follow the awesome-gbb [`foundry-iq/SKILL.md` at `7f1de882`](https://github.com/aiappsgbb/awesome-gbb/blob/7f1de882d5386e5a27852c91d3a89523eef218d0/skills/foundry-iq/SKILL.md#bootstrap-script-hardening-checklist) § Bootstrap script: hardening checklist.**
 > The seven-point checklist (no `az rest` for uploads, fail-fast on rc, key
 > sanitization regex, content chunking for the 32766-byte term limit, RBAC
 > propagation wait, post-upload count verification, idempotent recovery script)

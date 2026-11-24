@@ -19,6 +19,7 @@
     ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/create/references/voice-agent-smoke-test.md",
     ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/deploy/deploy.md",
     ".github/plugins/azure-skills/skills/microsoft-foundry/foundry-agent/observe/references/continuous-eval.md",
-    ".github/plugins/azure-skills/skills/microsoft-foundry/rbac/rbac.md"
+    ".github/plugins/azure-skills/skills/microsoft-foundry/rbac/rbac.md",
+    ".github/plugins/foundry-iq-skills/skills/foundry-iq"
   ]
 }
